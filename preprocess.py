@@ -58,6 +58,8 @@ def build_data_cv(data_folder, cv=10, clean_string=True):
             revs.append(datum)
     return revs, vocab
 
+
+
 def clean_str(string, TREC=False):
     """
     Tokenization/string cleaning for all datasets except for SST.
@@ -115,44 +117,16 @@ def get_topic_to_sentenceword(model, topicswordids, topicsdocument, raw_corpus, 
     for document in raw_corpus:
     	topic_sent = list()
     	for word in document:
-    		topic_document = topicsdocument[i]
-    		topic_word = list()
-    		for topicid in range(model.num_topics): 
-    			topic_word.append(topic_document[topicid][1] * topicswordids[topicid][dicts.token2id.get(word)])   #the topicdocument format is (topic id, probability)
-    		topic_sent.append(topic_word)
-    	p.append(topic_sent)
+            topic_document = topicsdocument[i]
+            topic_word = list()
+            for topicid in range(model.num_topics): 
+                topic_word.append(topic_document[topicid][1] * topicswordids[topicid][dicts.token2id.get(word)])
+            topic_wordnorm = [float(topic1)/sum(topic_word) for topic1 in topic_word]
+            topic_sent.append(topic_wordnorm)
+        p.append(topic_sent)
     	i = i + 1
 
     return p 
-
-def load_txt_vec(fname, dictionary, layer1_size=50):
-    """
-    Loads 50x1 word vecs from Glove!
-    """
-    result = []
-    word_vecs = {}
-    with open(fname) as f:
-        for line in f:
-            result.append(list(line.split(' ')))
-    word = [result[i][0] for i in range(len(result))]
-    vocab_size = len(word)
-
-
-    word_vecs = {}
-
-    for sublist in result:
-        del sublist[0]
-
-    for i in range(len(result)):
-        if dictionary.token2id.get(word[i]) > 0:
-            word_vecs[word[i]] = np.array([],dtype='float32')
-            for j in range(layer1_size):
-                word_vecs[word[i]] = np.append(word_vecs[word[i]], np.float32(result[i][j]))
-    return word_vecs
-
-
-
-
 
 
 def load_bin_vec(fname, dictionary):
@@ -179,73 +153,144 @@ def load_bin_vec(fname, dictionary):
                 f.read(binary_len)
     return word_vecs
 
-def add_unknown_words(word_vecs, dictionary,k=300, min_df=1):
+
+def rand_TE(num_topics=5, k=20):
+    """
+    Get word matrix. W[i] is the vector for word indexed by i
+    """
+    W = np.random.uniform(-0.5,0.5,(num_topics,k))    
+    return W
+
+def add_unknown_words(word_vecs, dictionary, min_df=1, k=300):
     """
     For words that occur in at least min_df documents, create a separate word vector.    
     0.25 is chosen so the unknown vectors have (approximately) same variance as pre-trained ones
     """
-    
     for word in dictionary.itervalues():
             if word not in word_vecs:
                 word_vecs[word] = np.random.uniform(-0.25,0.25,k) 
-"""
 
-data_folder = ["D:\\KIM\datasets\\rt-polarity.pos","D:\\KIM\\datasets\\rt-polarity.neg"]    
+def get_idx_from_sent(sent, topic_weights, word_idx_map, max_l=51, k=300, filter_h=5):
+    """
+    Transforms sentence into a list of indices. Pad with zeroes.
+    """
+    x = []
+    t = []
+    num_topics = len(topic_weights[0])
+    pad = filter_h - 1
+    zero_weights = [0.0]*num_topics
+    for i in xrange(pad):
+        x.append(0)
+        t.append(zero_weights)
+    words = sent.split()
+    for index, word in enumerate(words):
+        if word in word_idx_map:
+            x.append(word_idx_map[word])
+            t.append(topic_weights[index])
+    while len(x) < max_l+2*pad:
+        x.append(0)
+        t.append(zero_weights)
+    return x,t
+
+def make_idx_data_cv(revs, lda_weights, word_idx_map, cv, max_l=56, k=300, filter_h=5):
+    """
+    Transforms sentences into a 2-d matrix.
+    """
+    train, test = [], []
+    train_weight, test_weight = [], []
+    for index, rev in enumerate(revs): 
+        sent,sent_weight = get_idx_from_sent(rev["text"], lda_weights[index], word_idx_map, max_l, k, filter_h)   
+        sent.append(rev["y"])
+        if rev["split"] == cv:            
+            test.append(sent)
+            test_weight.append(sent_weight)       
+        else:  
+            train.append(sent)
+            train_weight.append(sent_weight)   
+    train = np.array(train, dtype="int")
+    #train_weight = np.array(train, dtype="float32")
+    #test_weight = np.array(train, dtype="float32")
+    vocab_train = np.unique(train)
+    test = np.array(test, dtype="int")
+    vocab_test = np.unique(test)
+    vocab_unseen = np.setdiff1d(vocab_test, vocab_train)
+    return [train, test], [train_weight,test_weight], vocab_unseen
+  
+def get_W(word_vecs, k=300):
+    """
+    Get word matrix. W[i] is the vector for word indexed by i
+    """
+    vocab_size = len(word_vecs)
+    word_idx_map = dict()
+    W = np.zeros(shape=(vocab_size+1, k))            
+    W[0] = np.zeros(k)
+    i = 1
+    for word in word_vecs:
+        W[i] = word_vecs[word]
+        word_idx_map[word] = i
+        i += 1
+    return W, word_idx_map
+
+def add_unknown_words(word_vecs, vocab, min_df=1, k=300):
+    """
+    For words that occur in at least min_df documents, create a separate word vector.    
+    0.25 is chosen so the unknown vectors have (approximately) same variance as pre-trained ones
+    """
+    for word in vocab:
+        if word not in word_vecs and vocab[word] >= min_df:
+            word_vecs[word] = np.random.uniform(-0.25,0.25,k)  
+
+data_folder = ["D:\\ZhaoRui\\KIM\datasets\\rt-polarity.pos","D:\\ZhaoRui\\KIM\\datasets\\rt-polarity.neg"]    
      
 revs, vocab = build_data_cv(data_folder, cv=10, clean_string=True)
+max_l = np.max(pd.DataFrame(revs)["num_words"])
+print "data loaded"
 raw_text = prec_process(revs)
 dictionary = corpora.Dictionary(raw_text)
-"""
 
-
-x = cPickle.load(open('mr.p',"rb"))
-revs, raw_text, dictionary = x[0], x[1], x[2]
 corpus = [dictionary.doc2bow(text) for text in raw_text]
 
 corpora.MmCorpus.serialize('questions.mm', corpus)
 mm = corpora.MmCorpus('questions.mm')
 
-"""
-cPickle.dump([revs, raw_text, dictionary], open("mr.p", "wb"))
+num_topics=5
+
+print "LDA model training:"
+
+
+lda = gensim.models.ldamodel.LdaModel(corpus=mm, id2word=dictionary, num_topics=num_topics, update_every=0, chunksize=19188, passes=20)
+
+lda.save('model')
+print "LDA model saved"
+
+Q = get_topic_to_wordids(lda) 
+
+P = get_doc_topic(corpus, lda)
+
+
+
+LDAFilter = get_topic_to_sentenceword(lda, Q, P, raw_text, dictionary)
+print "LDA weights learned"
+
+
+w2v = load_bin_vec('D:\\ZhaoRui\\EMNLP1\\cnn\\code\\word2vec\\word2vec.bin', dictionary)
+print "word2vec loaded!"
+print "num words already in word2vec: " + str(len(w2v))
+add_unknown_words(w2v, dictionary)
+W, word_idx_map = get_W(w2v)
+
+
+cPickle.dump([revs, W, LDAFilter, word_idx_map, dictionary, max_l], open("mr_10fold.p", "wb"))
 print "dataset created!"
-"""
 
 
-num_topics=10
-print "LDA model training:"
-lda = gensim.models.ldamodel.LdaModel(corpus=mm, id2word=dictionary, num_topics=num_topics, passes = 50, chunksize=2000, iterations=100000, alpha=1.0/len(mm))
-Q = get_topic_to_wordids(lda) 
-P = get_doc_topic(corpus, lda)
-LDAFilter = get_topic_to_sentenceword(lda, Q, P, raw_text, dictionary)
-
-print "LDA weights learned"
-cPickle.dump([LDAFilter], open("Filter_10.p", "wb"))
-print "Filter Learned!"
 
 
-"""
-num_topics=50
-print "LDA model training:"
-lda = gensim.models.ldamodel.LdaModel(corpus=mm, id2word=dictionary, num_topics=num_topics, passes = 50, chunksize=2000, iterations=100000, alpha=1.0/len(mm))
-Q = get_topic_to_wordids(lda) 
-P = get_doc_topic(corpus, lda)
-LDAFilter = get_topic_to_sentenceword(lda, Q, P, raw_text, dictionary)
-
-print "LDA weights learned"
-cPickle.dump([LDAFilter], open("Filter_50.p", "wb"))
-print "Filter Learned!"
 
 
-num_topics=100
-print "LDA model training:"
-lda = gensim.models.ldamodel.LdaModel(corpus=mm, id2word=dictionary, num_topics=num_topics, passes = 50, chunksize=2000, iterations=100000, alpha=1.0/len(mm))
-Q = get_topic_to_wordids(lda) 
-P = get_doc_topic(corpus, lda)
-LDAFilter = get_topic_to_sentenceword(lda, Q, P, raw_text, dictionary)
 
-print "LDA weights learned"
-cPickle.dump([LDAFilter], open("Filter_100.p", "wb"))
-print "Filter Learned!"
+
+
 
 #TTT = conv_sentence(raw_corpus, H, w2v, 3, num_topics)
 
@@ -253,59 +298,3 @@ print "Filter Learned!"
 
 
    
-
-
-#w2v = load_txt_vec('D:\\Anaconda\\rz\\glove.6B.50d.txt\\vectors.6B.50d.txt', dictionary)
-num_dim = 50
-w2v = load_txt_vec('D:\\Anaconda\\rz\glove.6B.50d.txt\\embedding.txt', dictionary, num_dim)
-print "word2vec loaded!"
-print "num words already in word2vec: " + str(len(w2v))
-add_unknown_words(w2v, dictionary, num_dim)
-cPickle.dump([w2v,num_dim], open("glove_50.p", "wb"))
-print "Wordvecs!"
-
-
-num_dim = 25
-w2v = load_txt_vec('D:\\Anaconda\\rz\\EMBEDDING_SIZE=25.txt\\embedding.txt', dictionary, num_dim)
-print "word2vec loaded!"
-print "num words already in word2vec: " + str(len(w2v))
-add_unknown_words(w2v, dictionary, num_dim)
-cPickle.dump([w2v,num_dim], open("emb_25.p", "wb"))
-print "Wordvecs!"
-
-num_dim = 50
-w2v = load_txt_vec('D:\\Anaconda\\rz\\EMBEDDING_SIZE=50.txt\\embedding.txt', dictionary, num_dim)
-print "word2vec loaded!"
-print "num words already in word2vec: " + str(len(w2v))
-add_unknown_words(w2v, dictionary, num_dim)
-cPickle.dump([w2v,num_dim], open("emb_50.p", "wb"))
-print "Wordvecs!"
-
-
-
-
-num_dim = 25
-w2v = load_txt_vec('D:\\Anaconda\\rz\\glove.twitter.27B.25d.txt\\embedding.txt', dictionary, num_dim)
-print "word2vec loaded!"
-print "num words already in word2vec: " + str(len(w2v))
-add_unknown_words(w2v, dictionary, num_dim)
-cPickle.dump([w2v,num_dim], open("glovetwi_25.p", "wb"))
-print "Wordvecs!"
-
-
-num_dim = 50
-w2v = load_txt_vec('D:\\Anaconda\\rz\\glove.twitter.27B.50d.txt\\embedding.txt', dictionary, num_dim)
-print "word2vec loaded!"
-print "num words already in word2vec: " + str(len(w2v))
-add_unknown_words(w2v, dictionary, num_dim)
-cPickle.dump([w2v,num_dim], open("glovetwi_50.p", "wb"))
-print "Wordvecs!"
-
-num_dim = 300
-w2v = load_bin_vec('D:\\KIM\\datasets\\word2vec\\word2vec.bin', dictionary)
-print "word2vec loaded!"
-print "num words already in word2vec: " + str(len(w2v))
-add_unknown_words(w2v, dictionary, num_dim)
-cPickle.dump([w2v,num_dim], open("word2vec_300.p", "wb"))
-print "Wordvecs!"
-"""
