@@ -61,8 +61,8 @@ def Iden(x):
     y = x
     return(y)
        
-def train_conv_net(datasets,
-                   U,
+def train_conv_net(datasets,datasets_weights
+                   U, U_Topical
                    img_w=300, 
                    filter_hs=[3,4,5],
                    hidden_units=[100,2], 
@@ -87,6 +87,9 @@ def train_conv_net(datasets,
     """    
     rng = np.random.RandomState(3435)
     img_h = len(datasets[0][0])-1  
+    U_Topical.dtype = "float32"
+    (num_topics,topic_dim) = U_Topical.shape
+    img_w = img_w + num_topics*topic_dim
     filter_w = img_w    
     feature_maps = hidden_units[0]
     filter_shapes = []
@@ -104,11 +107,17 @@ def train_conv_net(datasets,
     index = T.lscalar()
     x = T.matrix('x')   
     y = T.ivector('y')
+    x_topic = T.tensor3('x_topic')
     Words = theano.shared(value = U, name = "Words")
+    Topics = theano.shared(value=U_Topical,name="Topics")
     zero_vec_tensor = T.vector()
     zero_vec = np.zeros(img_w, dtype='float32')
     set_zero = theano.function([zero_vec_tensor], updates=[(Words, T.set_subtensor(Words[0,:], zero_vec_tensor))])
-    layer0_input = Words[T.cast(x.flatten(),dtype="int32")].reshape((x.shape[0],1,x.shape[1],Words.shape[1]))                                  
+    layer0_input_words = Words[T.cast(x.flatten(),dtype="int32")].reshape((x.shape[0],1,x.shape[1],Words.shape[1]))  
+    for i in range(num_topics):
+        sin_topic = x_topic[:][:][i]
+        Topics[i]*sin_topic.flatten()
+    layer0_input_topics =                                 
     conv_layers = []
     layer1_inputs = []
     for i in xrange(len(filter_hs)):
@@ -341,48 +350,34 @@ def make_idx_data_cv(revs, lda_weights, word_idx_map, cv, max_l=56, k=300, filte
     train = np.array(train, dtype="int")
     #train_weight = np.array(train, dtype="float32")
     #test_weight = np.array(train, dtype="float32")
-    vocab_train = np.unique(train)
     test = np.array(test, dtype="int")
-    vocab_test = np.unique(test)
-    vocab_unseen = np.setdiff1d(vocab_test, vocab_train)
-    return [train, test], [train_weight,test_weight], vocab_unseen
+    return [train, test], [train_weight,test_weight]
   
    
 
 if __name__=="__main__":
     print "loading data..."
-    x = cPickle.load(open("mr_5fold.p","rb"))
-    revs, W, W2, word_idx_map, vocab,max_l = x[0], x[1], x[2], x[3], x[4],x[5]
+    x = cPickle.load(open("mr_10fold.p","rb"))
+    revs, W, W_Topic, LDAFilter, word_idx_map, dictionary, max_l = x[0], x[1], x[2], x[3], x[4],x[5], x[6]
     print "data loaded!"
     #mode= sys.argv[1]
     #word_vectors = sys.argv[2] 
     #num_epoch = int(sys.argv[3])
-    mode = "-nonstatic"
     word_vectors = "-word2vec"
     num_epoch = 25   
-    if mode=="-nonstatic":
-        print "model architecture: CNN-non-static"
-        non_static=True
-    elif mode=="-static":
-        print "model architecture: CNN-static"
-        non_static=False
+    non_static=True
     execfile("conv_net_classes.py") 
-    if word_vectors=="-rand":
-        print "using: random vectors"
-        U = np.array(W2, dtype=theano.config.floatX)
-    elif word_vectors=="-word2vec":
-        print "using: word2vec vectors"
-        U = np.array(W, dtype=theano.config.floatX)
+    U = np.array(W, dtype=theano.config.floatX)
     print "Epoching Num: %d"%num_epoch
     results = []
     results_our = []
-    r = range(0,4)
-    cv = [[0],[0,1],[0,1,2],[0,1,2,3]]  
+    r = range(0,1)
     for i in r:
-        datasets, index_unseen = make_idx_data_cv(revs, word_idx_map, cv[i], max_l=max_l,k=300, filter_h=5)
-        print "Unseen Words Num: %d"%len(index_unseen)
-        perf,models = train_conv_net(datasets,
-                                  U,
+        datasets, datasets_weights = make_idx_data_cv(revs, LDAFilter, word_idx_map, i, max_l=max_l,k=300, filter_h=5)
+        
+
+        perf,models = train_conv_net(datasets,datasets_weights,
+                                  U, W_Topic
                                   lr_decay=0.95,
                                   filter_hs=[3,4,5],
                                   conv_non_linear="relu",
@@ -395,31 +390,7 @@ if __name__=="__main__":
                                   batch_size=100, 
                                   dropout_rate=[0.5])
         print "cv: " + str(i) + ", perf: " + str(perf)
-        wordvec_modif = models[2]
         
-        models.append(datasets)
-        models.append(index_unseen)
-        cPickle.dump(models, open("model.p", "wb"))  
-        results.append(perf)
-        wordvec1 = word2vec_adaptNN(U,wordvec_modif,index_unseen)
-        
-        pert_test = test_shelf_conv_net(wordvec1,
-                   img_w=300,
-                   batch_size=100, 
-                   filter_hs=[3,4,5],
-                   conv_non_linear="relu",
-                   activations=[Iden],
-                   non_static=True,dropout_rate =[0.5],filepath='model.p',Adaptive=True) 
-        print "cv: " + str(i) + ", our perf: " + str(pert_test)
-        results_our.append(pert_test)
-        print "performance gain: %f" %(pert_test-perf)
-    #print "original model\n"
-
-
-
-    #print np.mean(results)
-    #print np.mean(results_our)
-    #print "performance gain: %f" %(np.mean(results_our)-np.mean(results))
-    
+        """
     
      
