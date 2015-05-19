@@ -6,15 +6,7 @@ import pandas as pd
 import os
 
 from gensim import corpora, similarities, models
-
 import gensim
-
-def ReLU(x):
-    y = np.maximum(0.0, x) 
-    return(y)
-
-
-
 
 def build_data_cv(data_folder, cv=10, clean_string=True):
     """
@@ -169,52 +161,6 @@ def add_unknown_words(word_vecs, dictionary, min_df=1, k=300):
     for word in dictionary.itervalues():
             if word not in word_vecs:
                 word_vecs[word] = np.random.uniform(-0.25,0.25,k) 
-
-def get_idx_from_sent(sent, topic_weights, word_idx_map, max_l=51, k=300, filter_h=5):
-    """
-    Transforms sentence into a list of indices. Pad with zeroes.
-    """
-    x = []
-    t = []
-    num_topics = len(topic_weights[0])
-    pad = filter_h - 1
-    zero_weights = [0.0]*num_topics
-    for i in xrange(pad):
-        x.append(0)
-        t.append(zero_weights)
-    words = sent.split()
-    for index, word in enumerate(words):
-        if word in word_idx_map:
-            x.append(word_idx_map[word])
-            t.append(topic_weights[index])
-    while len(x) < max_l+2*pad:
-        x.append(0)
-        t.append(zero_weights)
-    return x,t
-
-def make_idx_data_cv(revs, lda_weights, word_idx_map, cv, max_l=56, k=300, filter_h=5):
-    """
-    Transforms sentences into a 2-d matrix.
-    """
-    train, test = [], []
-    train_weight, test_weight = [], []
-    for index, rev in enumerate(revs): 
-        sent,sent_weight = get_idx_from_sent(rev["text"], lda_weights[index], word_idx_map, max_l, k, filter_h)   
-        sent.append(rev["y"])
-        if rev["split"] == cv:            
-            test.append(sent)
-            test_weight.append(sent_weight)       
-        else:  
-            train.append(sent)
-            train_weight.append(sent_weight)   
-    train = np.array(train, dtype="int")
-    #train_weight = np.array(train, dtype="float32")
-    #test_weight = np.array(train, dtype="float32")
-    vocab_train = np.unique(train)
-    test = np.array(test, dtype="int")
-    vocab_test = np.unique(test)
-    vocab_unseen = np.setdiff1d(vocab_test, vocab_train)
-    return [train, test], [train_weight,test_weight], vocab_unseen
   
 def get_W(word_vecs, k=300):
     """
@@ -240,37 +186,27 @@ def add_unknown_words(word_vecs, vocab, min_df=1, k=300):
         if word not in word_vecs and vocab[word] >= min_df:
             word_vecs[word] = np.random.uniform(-0.25,0.25,k)  
 
-data_folder = ["D:\\ZhaoRui\\KIM\datasets\\rt-polarity.pos","D:\\ZhaoRui\\KIM\\datasets\\rt-polarity.neg"]    
-     
+
+data_folder = ["D:\\ZhaoRui\\KIM\datasets\\rt-polarity.pos","D:\\ZhaoRui\\KIM\\datasets\\rt-polarity.neg"]         
 revs, vocab = build_data_cv(data_folder, cv=10, clean_string=True)
 max_l = np.max(pd.DataFrame(revs)["num_words"])
 print "data loaded"
+
 raw_text = prec_process(revs)
 dictionary = corpora.Dictionary(raw_text)
-
 corpus = [dictionary.doc2bow(text) for text in raw_text]
-
 corpora.MmCorpus.serialize('questions.mm', corpus)
 mm = corpora.MmCorpus('questions.mm')
-
 num_topics=5
-
 print "LDA model training:"
 
-
 lda = gensim.models.ldamodel.LdaModel(corpus=mm, id2word=dictionary, num_topics=num_topics, update_every=0, chunksize=19188, passes=20)
-
 lda.save('model')
 print "LDA model saved"
-
 Q = get_topic_to_wordids(lda) 
-
 P = get_doc_topic(corpus, lda)
-
-
-
 LDAFilter = get_topic_to_sentenceword(lda, Q, P, raw_text, dictionary)
-print "LDA weights learned"
+W_Topic = rand_TE(num_topics, 20)
 
 
 w2v = load_bin_vec('D:\\ZhaoRui\\EMNLP1\\cnn\\code\\word2vec\\word2vec.bin', dictionary)
@@ -280,7 +216,7 @@ add_unknown_words(w2v, dictionary)
 W, word_idx_map = get_W(w2v)
 
 
-cPickle.dump([revs, W, LDAFilter, word_idx_map, dictionary, max_l], open("mr_10fold.p", "wb"))
+cPickle.dump([revs, W, W_Topic, LDAFilter, word_idx_map, dictionary, max_l], open("mr_10fold.p", "wb"))
 print "dataset created!"
 
 
@@ -288,11 +224,6 @@ print "dataset created!"
 
 
 
-
-
-
-
-#TTT = conv_sentence(raw_corpus, H, w2v, 3, num_topics)
 
 
 
