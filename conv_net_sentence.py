@@ -61,8 +61,8 @@ def Iden(x):
     y = x
     return(y)
        
-def train_conv_net(datasets,datasets_weights
-                   U, U_Topical
+def train_conv_net(datasets,datasets_weights,
+                   U, U_Topical,
                    img_w=300, 
                    filter_hs=[3,4,5],
                    hidden_units=[100,2], 
@@ -117,7 +117,7 @@ def train_conv_net(datasets,datasets_weights
     for i in range(num_topics):
         sin_topic = x_topic[:][:][i]
         Topics[i]*sin_topic.flatten()
-    layer0_input_topics =                                 
+    #layer0_input_topics =                                 
     conv_layers = []
     layer1_inputs = []
     for i in xrange(len(filter_hs)):
@@ -169,6 +169,8 @@ def train_conv_net(datasets,datasets_weights
             givens={
                   x: val_set_x[index * batch_size: (index + 1) * batch_size],
                   y: val_set_y[index * batch_size: (index + 1) * batch_size]})
+  
+
     else:
         test_set_x = np.asarray(datasets[1][:,:img_h] ,"float32")
         test_set_y = np.asarray(datasets[1][:,-1],"int32")
@@ -241,6 +243,7 @@ def train_conv_net(datasets,datasets_weights
                 word_vec = Words.get_value()
             #print "testing"     
     return test_perf, [params_conv, params_output, word_vec]
+
 
 def shared_dataset(data_xy, borrow=True):
         """ Function that loads the dataset into shared variables
@@ -375,7 +378,7 @@ if __name__=="__main__":
     for i in r:
         datasets, datasets_weights = make_idx_data_cv(revs, LDAFilter, word_idx_map, i, max_l=max_l,k=300, filter_h=5)
         
-
+        """
         perf,models = train_conv_net(datasets,datasets_weights,
                                   U, W_Topic
                                   lr_decay=0.95,
