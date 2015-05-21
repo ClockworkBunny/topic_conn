@@ -114,10 +114,16 @@ def train_conv_net(datasets,datasets_weights,
     zero_vec = np.zeros(img_w, dtype='float32')
     set_zero = theano.function([zero_vec_tensor], updates=[(Words, T.set_subtensor(Words[0,:], zero_vec_tensor))])
     layer0_input_words = Words[T.cast(x.flatten(),dtype="int32")].reshape((x.shape[0],1,x.shape[1],Words.shape[1]))  
+    layer0_inputs_topics = []
     for i in range(num_topics):
         sin_topic = x_topic[:][:][i]
-        Topics[i]*sin_topic.flatten()
-    #layer0_input_topics =                                 
+        Topic = Topics.reshape((1,Topics[i].shape[0]))
+        weights = sin_topic.flatten()
+        weights = weights.reshape((weights.shape[0],1))
+        layer0_inputs_topics.append(T.dot(weights, Topic))
+    layer0_input_topics = T.concatenate(layer0_inputs_topics,1)
+    layer0_input_topics = layer0_input_topics.reshape(x_topic.shape[0],1,x_topic[1],num_topics*topic_dim)
+    layer0_input = T.concatenate(layer0_input_words,layer0_input_topics,3)                                 
     conv_layers = []
     layer1_inputs = []
     for i in xrange(len(filter_hs)):
@@ -351,8 +357,8 @@ def make_idx_data_cv(revs, lda_weights, word_idx_map, cv, max_l=56, k=300, filte
             train.append(sent)
             train_weight.append(sent_weight)   
     train = np.array(train, dtype="int")
-    #train_weight = np.array(train, dtype="float32")
-    #test_weight = np.array(train, dtype="float32")
+    train_weight = np.array(train_weight, dtype="float32")
+    test_weight = np.array(test_weight, dtype="float32")
     test = np.array(test, dtype="int")
     return [train, test], [train_weight,test_weight]
   
