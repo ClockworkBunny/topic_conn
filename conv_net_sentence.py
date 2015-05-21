@@ -38,7 +38,7 @@ import warnings
 import sys
 import os
 #import modelstest
-os.chdir(os.path.dirname(__file__))
+#os.chdir(os.path.dirname(__file__))
 
 
 warnings.filterwarnings("ignore")   
@@ -89,7 +89,8 @@ def train_conv_net(datasets,datasets_weights,
     img_h = len(datasets[0][0])-1  
     U_Topical.dtype = "float32"
     (num_topics,topic_dim) = U_Topical.shape
-    img_w = img_w + num_topics*topic_dim
+    word_w = img_w
+    img_w = int(img_w + num_topics*topic_dim)
     filter_w = img_w    
     feature_maps = hidden_units[0]
     filter_shapes = []
@@ -111,19 +112,19 @@ def train_conv_net(datasets,datasets_weights,
     Words = theano.shared(value = U, name = "Words")
     Topics = theano.shared(value=U_Topical,name="Topics")
     zero_vec_tensor = T.vector()
-    zero_vec = np.zeros(img_w, dtype='float32')
+    zero_vec = np.zeros(word_w, dtype='float32')
     set_zero = theano.function([zero_vec_tensor], updates=[(Words, T.set_subtensor(Words[0,:], zero_vec_tensor))])
     layer0_input_words = Words[T.cast(x.flatten(),dtype="int32")].reshape((x.shape[0],1,x.shape[1],Words.shape[1]))  
     layer0_inputs_topics = []
     for i in range(num_topics):
-        sin_topic = x_topic[:][:][i]
+        sin_topic = x_topic[:,:,i]
         Topic = Topics[i].reshape((1,Topics[i].shape[0]))
         weights = sin_topic.flatten()
         weights = weights.reshape((weights.shape[0],1))
         layer0_inputs_topics.append(T.dot(weights, Topic))
     layer0_input_topics = T.concatenate(layer0_inputs_topics,1)
-    layer0_input_topics = layer0_input_topics.reshape(x_topic.shape[0],1,x_topic[1],num_topics*topic_dim)
-    layer0_input = T.concatenate(layer0_input_words,layer0_input_topics,3)                                 
+    layer0_input_topics = layer0_input_topics.reshape((x_topic.shape[0],1,x_topic.shape[1],num_topics*topic_dim))
+    layer0_input = T.concatenate([layer0_input_words,layer0_input_topics],3)                                 
     conv_layers = []
     layer1_inputs = []
     for i in xrange(len(filter_hs)):
@@ -155,7 +156,8 @@ def train_conv_net(datasets,datasets_weights,
     np.random.seed(3435)
     if datasets[0].shape[0] % batch_size > 0:
         extra_data_num = batch_size - datasets[0].shape[0] % batch_size
-        random_index = np.random.permutation(np.range(datasets[0].shape[0])) 
+        random_index = np.random.permutation(np.arange(datasets[0].shape[0])) 
+        random_index.astype('int32')
         train_set = datasets[0][random_index,:]
         train_set_weights = datasets_weights[0][random_index,:,:]
         extra_data = train_set[:extra_data_num]
@@ -165,7 +167,8 @@ def train_conv_net(datasets,datasets_weights,
     else:
         new_data = datasets[0]
         new_data_weights = datasets_weights[0]
-    random_index = np.random.permutation(np.range(new_data.shape[0])) 
+    random_index = np.random.permutation(np.arange(new_data.shape[0])) 
+    random_index.astype('int32')
     new_data = new_data[random_index]
     new_data_weights = new_data_weights[random_index]
     n_batches = new_data.shape[0]/batch_size
@@ -179,8 +182,8 @@ def train_conv_net(datasets,datasets_weights,
         train_set_weights = new_data_weights[:n_train_batches*batch_size,:,:]
         val_set = new_data[n_train_batches*batch_size:,:]
         val_set_weights = new_data_weights[n_train_batches*batch_size:,:,:]     
-        train_set_x, train_set_x_topic, train_set_y = shared_dataset((train_set[:,:img_h],train_set_weights[:,:img_h,:],train_set[:,-1]))
-        val_set_x, val_set_x_topic, val_set_y = shared_dataset((val_set[:,:img_h],val_set_weights[:,:img_h,:],val_set[:,-1]))
+        train_set_x, train_set_x_topic, train_set_y = shared_dataset((train_set[:,:img_h],train_set_weights,train_set[:,-1]))
+        val_set_x, val_set_x_topic, val_set_y = shared_dataset((val_set[:,:img_h],val_set_weights,val_set[:,-1]))
         n_val_batches = n_batches - n_train_batches
         val_model = theano.function([index], classifier.errors(y),
                 givens={
@@ -189,23 +192,38 @@ def train_conv_net(datasets,datasets_weights,
                 y: val_set_y[index * batch_size: (index + 1) * batch_size]})
     else:
         train_set = new_data[:,:]    
-        train_set_x, train_set_x_topic, train_set_y = shared_dataset((train_set[:,:img_h],train_set_weights[:,:img_h,:],train_set[:,-1]))  
+        train_set_x, train_set_x_topic, train_set_y = shared_dataset((train_set[:,:img_h],train_set_weights,train_set[:,-1]))  
             
     #make theano functions to get train/val/test errors
     test_model = theano.function([index], classifier.errors(y),
              givens={
                 x: train_set_x[index * batch_size: (index + 1) * batch_size],
-                x_topic: val_set_x_topic[index * batch_size: (index + 1) * batch_size],
+                x_topic: train_set_x_topic[index * batch_size: (index + 1) * batch_size],
                 y: train_set_y[index * batch_size: (index + 1) * batch_size]})               
     train_model = theano.function([index], cost, updates=grad_updates,
           givens={
             x: train_set_x[index*batch_size:(index+1)*batch_size],
-            x_topic: val_set_x_topic[index * batch_size: (index + 1) * batch_size],
+            x_topic: train_set_x_topic[index * batch_size: (index + 1) * batch_size],
             y: train_set_y[index*batch_size:(index+1)*batch_size]})     
     test_pred_layers = []
     test_size = test_set_x.shape[0]
-    test_layer0_input = Words[T.cast(x.flatten(),dtype="int32")].reshape((test_size,1,img_h,Words.shape[1]))
-    
+   
+                
+
+    test_layer0_input_words = Words[T.cast(x.flatten(),dtype="int32")].reshape((test_size,1,img_h,Words.shape[1]))  
+    test_layer0_inputs_topics = []
+    for i in range(num_topics):
+        sin_topic = x_topic[:,:,i]
+        Topic = Topics[i].reshape((1,Topics[i].shape[0]))
+        weights = sin_topic.flatten()
+        weights = weights.reshape((weights.shape[0],1))
+        test_layer0_inputs_topics.append(T.dot(weights, Topic))
+    test_layer0_input_topics = T.concatenate(test_layer0_inputs_topics,1)
+    test_layer0_input_topics = test_layer0_input_topics.reshape((test_size,1,img_h,num_topics*topic_dim))
+    test_layer0_input = T.concatenate([test_layer0_input_words,test_layer0_input_topics],3) 
+
+
+
     for conv_layer in conv_layers:
         test_layer0_output = conv_layer.predict(test_layer0_input, test_size)
         test_pred_layers.append(test_layer0_output.flatten(2))
@@ -213,7 +231,7 @@ def train_conv_net(datasets,datasets_weights,
     test_y_pred = classifier.predict(test_layer1_input)
 
     test_error = T.mean(T.neq(test_y_pred, y))
-    test_model_all = theano.function([x,y], test_error)   
+    test_model_all = theano.function([x,x_topic,y], test_error)   
     
     #start training over mini-batches
     print '... training'
@@ -236,19 +254,23 @@ def train_conv_net(datasets,datasets_weights,
         train_perf = 1 - np.mean(train_losses)
         val_losses = [val_model(i) for i in xrange(n_val_batches)]
         val_perf = 1- np.mean(val_losses)                        
-        #print('epoch %i, train perf %f %%, val perf %f' % (epoch, train_perf * 100., val_perf*100.))
+        
+        print('epoch %i, train perf %f %%, val perf %f' % (epoch, train_perf * 100., val_perf*100.))
+        
         if val_perf >= best_val_perf:
             params_conv = [] 
             params_output = {}
-            test_loss = test_model_all(test_set_x,test_set_y) 
+            test_loss = test_model_all(test_set_x,test_set_x_topic, test_set_y) 
             test_perf = 1- test_loss 
             best_val_perf = val_perf 
             for conv_layer in conv_layers:
                 params_conv.append(conv_layer.get_params())
                 params_output = classifier.get_params()
                 word_vec = Words.get_value()
-            #print "testing"     
-    return test_perf, [params_conv, params_output, word_vec]
+                Topic_vec = Topics.get_value()
+            print "testing" 
+           
+    return test_perf, [params_conv, params_output, word_vec,Topic_vec]
 
 
 def shared_dataset(data_xy, borrow=True):
@@ -260,14 +282,17 @@ def shared_dataset(data_xy, borrow=True):
         is needed (the default behaviour if the data is not in a shared
         variable) would lead to a large decrease in performance.
         """
-        data_x, data_y = data_xy
+        data_x, data_x_topic, data_y = data_xy
         shared_x = theano.shared(np.asarray(data_x,
+                                               dtype=theano.config.floatX),
+                                 borrow=borrow)
+        shared_x_topic = theano.shared(np.asarray(data_x_topic,
                                                dtype=theano.config.floatX),
                                  borrow=borrow)
         shared_y = theano.shared(np.asarray(data_y,
                                                dtype=theano.config.floatX),
                                  borrow=borrow)
-        return shared_x, T.cast(shared_y, 'int32')
+        return shared_x, shared_x_topic, T.cast(shared_y, 'int32')
         
 def sgd_updates_adadelta(params,cost,rho=0.95,epsilon=1e-6,norm_lim=9,word_vec_name='Words'):
     """
@@ -292,7 +317,7 @@ def sgd_updates_adadelta(params,cost,rho=0.95,epsilon=1e-6,norm_lim=9,word_vec_n
         step =  -(T.sqrt(exp_su + epsilon) / T.sqrt(up_exp_sg + epsilon)) * gp
         updates[exp_su] = rho * exp_su + (1 - rho) * T.sqr(step)
         stepped_param = param + step
-        if (param.get_value(borrow=True).ndim == 2) and (param.name!='Words'):
+        if (param.get_value(borrow=True).ndim == 2) and (param.name != 'Words'):
             col_norms = T.sqrt(T.sum(T.sqr(stepped_param), axis=0))
             desired_norms = T.clip(col_norms, 0, T.sqrt(norm_lim))
             scale = desired_norms / (1e-7 + col_norms)
@@ -361,10 +386,10 @@ def make_idx_data_cv(revs, lda_weights, word_idx_map, cv, max_l=56, k=300, filte
     test_weight = np.array(test_weight, dtype="float32")
     test = np.array(test, dtype="int")
     return [train, test], [train_weight,test_weight]
-  
-   
+
 
 if __name__=="__main__":
+    
     print "loading data..."
     x = cPickle.load(open("mr_10fold.p","rb"))
     revs, W, W_Topic, LDAFilter, word_idx_map, dictionary, max_l = x[0], x[1], x[2], x[3], x[4],x[5], x[6]
@@ -384,9 +409,9 @@ if __name__=="__main__":
     for i in r:
         datasets, datasets_weights = make_idx_data_cv(revs, LDAFilter, word_idx_map, i, max_l=max_l,k=300, filter_h=5)
         
-        """
+        
         perf,models = train_conv_net(datasets,datasets_weights,
-                                  U, W_Topic
+                                  U, W_Topic,
                                   lr_decay=0.95,
                                   filter_hs=[3,4,5],
                                   conv_non_linear="relu",
@@ -399,7 +424,6 @@ if __name__=="__main__":
                                   batch_size=100, 
                                   dropout_rate=[0.5])
         print "cv: " + str(i) + ", perf: " + str(perf)
+          
         
-        """
-    
-     
+  
