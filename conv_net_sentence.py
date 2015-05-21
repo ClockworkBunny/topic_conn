@@ -269,8 +269,9 @@ def train_conv_net(datasets,datasets_weights,
                 word_vec = Words.get_value()
                 Topic_vec = Topics.get_value()
             print "testing" 
-           
-    return test_perf, [params_conv, params_output, word_vec,Topic_vec]
+    test_loss = test_model_all(test_set_x,test_set_x_topic, test_set_y) 
+    test_final = 1- test_loss
+    return test_perf, test_final, [params_conv, params_output, word_vec,Topic_vec]
 
 
 def shared_dataset(data_xy, borrow=True):
@@ -317,7 +318,7 @@ def sgd_updates_adadelta(params,cost,rho=0.95,epsilon=1e-6,norm_lim=9,word_vec_n
         step =  -(T.sqrt(exp_su + epsilon) / T.sqrt(up_exp_sg + epsilon)) * gp
         updates[exp_su] = rho * exp_su + (1 - rho) * T.sqr(step)
         stepped_param = param + step
-        if (param.get_value(borrow=True).ndim == 2) and (param.name != 'Words'):
+        if (param.get_value(borrow=True).ndim == 2) and (param.name != 'Words') and (param.name != 'Topics'):
             col_norms = T.sqrt(T.sum(T.sqr(stepped_param), axis=0))
             desired_norms = T.clip(col_norms, 0, T.sqrt(norm_lim))
             scale = desired_norms / (1e-7 + col_norms)
@@ -398,20 +399,21 @@ if __name__=="__main__":
     #word_vectors = sys.argv[2] 
     #num_epoch = int(sys.argv[3])
     word_vectors = "-word2vec"
-    num_epoch = 25   
+    num_epoch = 30  
     non_static=True
+    
     execfile("conv_net_classes.py") 
     U = np.array(W, dtype=theano.config.floatX)
+    U_Topic = np.array(W_Topic, dtype=theano.config.floatX)
     print "Epoching Num: %d"%num_epoch
     results = []
     results_our = []
-    r = range(0,1)
+    r = range(0,10)
     for i in r:
         datasets, datasets_weights = make_idx_data_cv(revs, LDAFilter, word_idx_map, i, max_l=max_l,k=300, filter_h=5)
-        
-        
-        perf,models = train_conv_net(datasets,datasets_weights,
-                                  U, W_Topic,
+                
+        perf,perf1, models = train_conv_net(datasets,datasets_weights,
+                                  U, U_Topic,
                                   lr_decay=0.95,
                                   filter_hs=[3,4,5],
                                   conv_non_linear="relu",
@@ -423,7 +425,7 @@ if __name__=="__main__":
                                   non_static=non_static,
                                   batch_size=100, 
                                   dropout_rate=[0.5])
-        print "cv: " + str(i) + ", perf: " + str(perf)
-          
-        
+        print "cv: " + str(i) + ", perf: " + str(perf1)
+           
+     
   
