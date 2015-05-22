@@ -145,7 +145,7 @@ def train_conv_net(datasets,datasets_weights,
         params += conv_layer.params
     if non_static:
         #if word vectors are allowed to change, add them as model parameters
-        params += [Words]   #params are model parameters
+        #params += [Words]   #params are model parameters
         params += [Topics]
     cost = classifier.negative_log_likelihood(y) 
     dropout_cost = classifier.dropout_negative_log_likelihood(y)           
@@ -406,7 +406,7 @@ if __name__=="__main__":
     #word_vectors = sys.argv[2] 
     #num_epoch = int(sys.argv[3])
     word_vectors = "-word2vec"
-    num_epoch = 25  
+    num_epoch = 30  
     non_static=True
     
     execfile("conv_net_classes.py") 
@@ -435,7 +435,7 @@ if __name__=="__main__":
                                   dropout_rate=[0.5])
         print "cv: " + str(i) + ", perf: " + str(perf1)
         perf_all.append(perf1)
-        
+
 
      
   
