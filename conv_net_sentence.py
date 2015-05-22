@@ -387,19 +387,26 @@ def make_idx_data_cv(revs, lda_weights, word_idx_map, cv, max_l=56, k=300, filte
     test_weight = np.array(test_weight, dtype="float32")
     test = np.array(test, dtype="int")
     return [train, test], [train_weight,test_weight]
-
+def rand_TE(num_topics=5, k=20):
+    """
+    Get word matrix. W[i] is the vector for word indexed by i
+    """
+    W = np.random.uniform(-0.25,0.25,(num_topics,k))    
+    return W
 
 if __name__=="__main__":
     
     print "loading data..."
     x = cPickle.load(open("mr_10fold.p","rb"))
     revs, W, W_Topic, LDAFilter, word_idx_map, dictionary, max_l = x[0], x[1], x[2], x[3], x[4],x[5], x[6]
+    del W_Topic
+    W_Topic = rand_TE(5,40)
     print "data loaded!"
     #mode= sys.argv[1]
     #word_vectors = sys.argv[2] 
     #num_epoch = int(sys.argv[3])
     word_vectors = "-word2vec"
-    num_epoch = 30  
+    num_epoch = 25  
     non_static=True
     
     execfile("conv_net_classes.py") 
@@ -409,6 +416,7 @@ if __name__=="__main__":
     results = []
     results_our = []
     r = range(0,10)
+    perf_all = []
     for i in r:
         datasets, datasets_weights = make_idx_data_cv(revs, LDAFilter, word_idx_map, i, max_l=max_l,k=300, filter_h=5)
                 
@@ -426,6 +434,8 @@ if __name__=="__main__":
                                   batch_size=100, 
                                   dropout_rate=[0.5])
         print "cv: " + str(i) + ", perf: " + str(perf1)
-           
+        perf_all.append(perf1)
+        
+
      
   
