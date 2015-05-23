@@ -415,7 +415,7 @@ if __name__=="__main__":
     x = cPickle.load(open("mr_10fold.p","rb"))
     revs, W, W_Topic, LDAFilter, word_idx_map, dictionary, max_l = x[0], x[1], x[2], x[3], x[4],x[5], x[6]
     del W_Topic
-    W_Topic = rand_TE(5,60)
+    W_Topic = rand_TE(5,20)
     print "data loaded!"
     #mode= sys.argv[1]
     #word_vectors = sys.argv[2] 
@@ -438,7 +438,7 @@ if __name__=="__main__":
         perf,models = train_conv_net(datasets,datasets_weights,
                                   U, U_Topic,
                                   lr_decay=0.95,
-                                  filter_hs=[2,3,4,5],
+                                  filter_hs=[3,4,5],
                                   conv_non_linear="relu",
                                   hidden_units=[150,2], 
                                   use_valid_set=False,
