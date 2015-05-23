@@ -73,6 +73,7 @@ def train_conv_net(datasets,datasets_weights,
                    lr_decay = 0.95,
                    conv_non_linear="relu",
                    use_valid_set=True,
+                   show_states=False,
                    activations=[Iden],
                    sqr_norm_lim=9,
                    non_static=True):
@@ -143,10 +144,11 @@ def train_conv_net(datasets,datasets_weights,
     params = classifier.params     
     for conv_layer in conv_layers:
         params += conv_layer.params
+    
     if non_static:
         #if word vectors are allowed to change, add them as model parameters
-        #params += [Words]   #params are model parameters
-        params += [Topics]
+        params += [Words]   #params are model parameters
+    params += [Topics]      #Topics embedding are adjusted
     cost = classifier.negative_log_likelihood(y) 
     dropout_cost = classifier.dropout_negative_log_likelihood(y)           
     grad_updates = sgd_updates_adadelta(params, dropout_cost, lr_decay, 1e-6, sqr_norm_lim)
@@ -252,26 +254,39 @@ def train_conv_net(datasets,datasets_weights,
                 set_zero(zero_vec)
         train_losses = [test_model(i) for i in xrange(n_train_batches)]
         train_perf = 1 - np.mean(train_losses)
-        val_losses = [val_model(i) for i in xrange(n_val_batches)]
-        val_perf = 1- np.mean(val_losses)                        
+        if use_valid_set:
+            val_losses = [val_model(i) for i in xrange(n_val_batches)]
+            val_perf = 1- np.mean(val_losses)
+
+            if val_perf >= best_val_perf:
+                params_conv = [] 
+                params_output = {}
+                test_loss = test_model_all(test_set_x,test_set_x_topic, test_set_y) 
+                test_perf = 1- test_loss 
+                best_val_perf = val_perf 
+                for conv_layer in conv_layers:
+                    params_conv.append(conv_layer.get_params())
+                    params_output = classifier.get_params()
+                    word_vec = Words.get_value()
+                    Topic_vec = Topics.get_value()
+        else :
+            val_perf = 0                       
+        if show_states:
+            print('epoch %i, train perf %f %%, val perf %f' % (epoch, train_perf * 100., val_perf*100.))
         
-        print('epoch %i, train perf %f %%, val perf %f' % (epoch, train_perf * 100., val_perf*100.))
+    if not use_valid_set:
+        params_conv = [] 
+        params_output = {}
+        test_loss = test_model_all(test_set_x,test_set_x_topic, test_set_y) 
+        test_perf = 1- test_loss 
         
-        if val_perf >= best_val_perf:
-            params_conv = [] 
-            params_output = {}
-            test_loss = test_model_all(test_set_x,test_set_x_topic, test_set_y) 
-            test_perf = 1- test_loss 
-            best_val_perf = val_perf 
-            for conv_layer in conv_layers:
-                params_conv.append(conv_layer.get_params())
-                params_output = classifier.get_params()
-                word_vec = Words.get_value()
-                Topic_vec = Topics.get_value()
-            print "testing" 
-    test_loss = test_model_all(test_set_x,test_set_x_topic, test_set_y) 
-    test_final = 1- test_loss
-    return test_perf, test_final, [params_conv, params_output, word_vec,Topic_vec]
+        for conv_layer in conv_layers:
+            params_conv.append(conv_layer.get_params())
+            params_output = classifier.get_params()
+            word_vec = Words.get_value()
+            Topic_vec = Topics.get_value() 
+    
+    return test_perf, [params_conv, params_output, word_vec,Topic_vec]
 
 
 def shared_dataset(data_xy, borrow=True):
@@ -400,13 +415,13 @@ if __name__=="__main__":
     x = cPickle.load(open("mr_10fold.p","rb"))
     revs, W, W_Topic, LDAFilter, word_idx_map, dictionary, max_l = x[0], x[1], x[2], x[3], x[4],x[5], x[6]
     del W_Topic
-    W_Topic = rand_TE(5,40)
+    W_Topic = rand_TE(5,60)
     print "data loaded!"
     #mode= sys.argv[1]
     #word_vectors = sys.argv[2] 
     #num_epoch = int(sys.argv[3])
     word_vectors = "-word2vec"
-    num_epoch = 30  
+    num_epoch = 25  
     non_static=True
     
     execfile("conv_net_classes.py") 
@@ -420,21 +435,23 @@ if __name__=="__main__":
     for i in r:
         datasets, datasets_weights = make_idx_data_cv(revs, LDAFilter, word_idx_map, i, max_l=max_l,k=300, filter_h=5)
                 
-        perf,perf1, models = train_conv_net(datasets,datasets_weights,
+        perf,models = train_conv_net(datasets,datasets_weights,
                                   U, U_Topic,
                                   lr_decay=0.95,
-                                  filter_hs=[3,4,5],
+                                  filter_hs=[2,3,4,5],
                                   conv_non_linear="relu",
-                                  hidden_units=[100,2], 
-                                  use_valid_set=True, 
+                                  hidden_units=[150,2], 
+                                  use_valid_set=False,
+                                  show_states = True, 
                                   shuffle_batch=True, 
                                   n_epochs=num_epoch, 
                                   sqr_norm_lim=9,
                                   non_static=non_static,
                                   batch_size=100, 
                                   dropout_rate=[0.5])
-        print "cv: " + str(i) + ", perf: " + str(perf1)
-        perf_all.append(perf1)
+        print "cv: " + str(i) + ", perf: " + str(perf)
+        perf_all.append(perf)
+    print np.mean(perf_all)
 
 
      
