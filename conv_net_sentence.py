@@ -448,7 +448,7 @@ if __name__=="__main__":
                                   sqr_norm_lim=9,
                                   non_static=non_static,
                                   batch_size=100, 
-                                  dropout_rate=[0.5])
+                                  dropout_rate=[0.25])
         print "cv: " + str(i) + ", perf: " + str(perf)
         perf_all.append(perf)
     print np.mean(perf_all)
