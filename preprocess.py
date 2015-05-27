@@ -153,7 +153,7 @@ def rand_TE(num_topics=5, k=20):
     W = np.random.uniform(-0.25,0.25,(num_topics,k))    
     return W
 
-def Gen_TE(lda,w2v, num_topics,num_words=10):
+def Gen_TE(lda,w2v, num_topics, num_words=10):
     """
     Generate Topic Embeddings based on high-topical words embeddings.
     The topic index is the same as the one used in the trained lda model.
@@ -192,15 +192,6 @@ def get_W(word_vecs, k=300):
         i += 1
     return W, word_idx_map
 
-def add_unknown_words(word_vecs, vocab, min_df=1, k=300):
-    """
-    For words that occur in at least min_df documents, create a separate word vector.    
-    0.25 is chosen so the unknown vectors have (approximately) same variance as pre-trained ones
-    """
-    for word in vocab:
-        if word not in word_vecs and vocab[word] >= min_df:
-            word_vecs[word] = np.random.uniform(-0.25,0.25,k)  
-
 
 data_folder = ["D:\\ZhaoRui\\KIM\datasets\\rt-polarity.pos","D:\\ZhaoRui\\KIM\\datasets\\rt-polarity.neg"]         
 revs, vocab = build_data_cv(data_folder, cv=10, clean_string=True)
@@ -216,11 +207,11 @@ num_topics = 100
 print "LDA model training:"
 
 
-#lda = gensim.models.ldamodel.LdaModel(corpus=mm, id2word=dictionary, num_topics=num_topics, update_every=0, chunksize=19188, passes=20)
-#lda.save('model')
-#print "LDA model saved"
-lda = gensim.models.ldamodel.LdaModel.load('model')
-print "LDA loaded"
+lda = gensim.models.ldamodel.LdaModel(corpus=mm, id2word=dictionary, num_topics=num_topics, update_every=0, chunksize=19188, passes=20)
+lda.save('model')
+print "LDA model saved"
+
+
 Q = get_topic_to_wordids(lda) 
 P = get_doc_topic(corpus, lda)
 
@@ -234,23 +225,23 @@ for topics_document in P:
 Topic_d = np.array(topic_d,dtype='float32')
 
 LDAFilter = get_topic_to_sentenceword(lda, Q, P, raw_text, dictionary)
-W_Topic = rand_TE(num_topics, 20)
+W_Topic_rnd = rand_TE(num_topics, 20)
 
 
 w2v = load_bin_vec('D:\\ZhaoRui\\EMNLP1\\cnn\\code\\word2vec\\word2vec.bin', dictionary)
 print "word2vec loaded!"
 print "num words already in word2vec: " + str(len(w2v))
 add_unknown_words(w2v, dictionary)
-W_Topic2 = Gen_TE(lda,w2v,num_topics)
+W_Topic = Gen_TE(lda,w2v,num_topics)
 W, word_idx_map = get_W(w2v)
 
 
-"""
+
 cPickle.dump([revs, W, W_Topic, LDAFilter, word_idx_map, dictionary, max_l, Topic_d], open("mr_10fold.p", "wb"))
 
 print "dataset created!"
 
-"""
+
 
 
 
