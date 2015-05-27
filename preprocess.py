@@ -148,9 +148,24 @@ def load_bin_vec(fname, dictionary):
 
 def rand_TE(num_topics=5, k=20):
     """
-    Get word matrix. W[i] is the vector for word indexed by i
+    Get Topic Embeddings randomly. 
     """
-    W = np.random.uniform(-0.5,0.5,(num_topics,k))    
+    W = np.random.uniform(-0.25,0.25,(num_topics,k))    
+    return W
+
+def Gen_TE(lda,w2v, num_topics,num_words=10):
+    """
+    Generate Topic Embeddings based on high-topical words embeddings.
+    The topic index is the same as the one used in the trained lda model.
+    """
+    dim = len(w2v.values()[0])
+    W = np.ones((num_topics,dim))
+    for i in range(num_topics):
+        wordlist = lda.show_topic(i,num_words)
+        words = [x[1] for x in wordlist]
+        for word in words:
+            W[i] += w2v[word]
+        W[i] = W[i]/num_words
     return W
 
 def add_unknown_words(word_vecs, dictionary, min_df=1, k=300):
@@ -197,14 +212,27 @@ dictionary = corpora.Dictionary(raw_text)
 corpus = [dictionary.doc2bow(text) for text in raw_text]
 corpora.MmCorpus.serialize('questions.mm', corpus)
 mm = corpora.MmCorpus('questions.mm')
-num_topics=5
+num_topics = 100
 print "LDA model training:"
 
-lda = gensim.models.ldamodel.LdaModel(corpus=mm, id2word=dictionary, num_topics=num_topics, update_every=0, chunksize=19188, passes=20)
-lda.save('model')
-print "LDA model saved"
+
+#lda = gensim.models.ldamodel.LdaModel(corpus=mm, id2word=dictionary, num_topics=num_topics, update_every=0, chunksize=19188, passes=20)
+#lda.save('model')
+#print "LDA model saved"
+lda = gensim.models.ldamodel.LdaModel.load('model')
+print "LDA loaded"
 Q = get_topic_to_wordids(lda) 
 P = get_doc_topic(corpus, lda)
+
+topic_d = []
+for topics_document in P:
+    topics = []
+    for i in range(num_topics):
+        topics.append(topics_document[i][1])
+    topic_d.append(topics)
+
+Topic_d = np.array(topic_d,dtype='float32')
+
 LDAFilter = get_topic_to_sentenceword(lda, Q, P, raw_text, dictionary)
 W_Topic = rand_TE(num_topics, 20)
 
@@ -213,13 +241,16 @@ w2v = load_bin_vec('D:\\ZhaoRui\\EMNLP1\\cnn\\code\\word2vec\\word2vec.bin', dic
 print "word2vec loaded!"
 print "num words already in word2vec: " + str(len(w2v))
 add_unknown_words(w2v, dictionary)
+W_Topic2 = Gen_TE(lda,w2v,num_topics)
 W, word_idx_map = get_W(w2v)
 
 
-cPickle.dump([revs, W, W_Topic, LDAFilter, word_idx_map, dictionary, max_l], open("mr_10fold.p", "wb"))
+"""
+cPickle.dump([revs, W, W_Topic, LDAFilter, word_idx_map, dictionary, max_l, Topic_d], open("mr_10fold.p", "wb"))
+
 print "dataset created!"
 
-
+"""
 
 
 
